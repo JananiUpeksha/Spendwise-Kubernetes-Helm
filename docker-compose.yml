@@ -1,0 +1,96 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: spendwise_db
+    environment:
+      POSTGRES_USER: spendwise
+      POSTGRES_PASSWORD: spendwise123
+      POSTGRES_DB: spendwise
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spendwise"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: spendwise_redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: spendwise_backend
+    environment:
+      DATABASE_URL: postgresql://spendwise:spendwise123@db:5432/spendwise
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    container_name: spendwise_frontend
+    depends_on:
+      - backend
+    expose:
+      - "80"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: spendwise_cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: spendwise_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    expose:
+      - "9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: spendwise_grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=spendwise123
+      - GF_SERVER_ROOT_URL=http://15.206.55.8/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: spendwise_nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+
+volumes:
+  db_data:
+  prometheus_data:
+  grafana_data:
