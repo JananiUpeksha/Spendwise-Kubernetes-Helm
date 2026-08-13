@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spendwise-config
+  namespace: spendwise
+data:
+  POSTGRES_USER: "spendwise"
+  POSTGRES_DB: "spendwise"
+  REDIS_URL: "redis://redis-service:6379/0"
