@@ -1,0 +1,14 @@
+SpendWise has been deployed to the "{{ .Values.namespace }}" namespace.
+
+Check the status of your pods:
+  kubectl get pods -n {{ .Values.namespace }}
+
+If using the Ingress (nginx-ingress must already be installed in the cluster):
+  kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+  Then visit: http://localhost:8080
+
+To view backend logs:
+  kubectl logs -n {{ .Values.namespace }} -l app=backend
+
+To view frontend logs:
+  kubectl logs -n {{ .Values.namespace }} -l app=frontend
