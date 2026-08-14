@@ -1,142 +1,194 @@
-# 💰 SpendWise
+# 🚀 SpendWise on Kubernetes + Helm
 
-A full-stack expense tracker with budget analytics, built as a hands-on DevOps portfolio project. This project covers the complete lifecycle of a modern application — from writing the backend and frontend, to containerizing it, deploying it on real cloud infrastructure, automating that deployment, and monitoring it in production.
+> Migrating a production-style multi-service app from Docker Compose to a fully orchestrated Kubernetes deployment — with Helm packaging, autoscaling, self-healing, and zero-downtime rollouts.
 
-🔗 **Live demo:** http://15.206.55.8
-
----
-
-## ✨ Features
-
-- 📊 **Dashboard** — visual analytics with spending by category, budget vs actual, and monthly trends
-- 💸 **Transactions** — add, edit, and delete income/expense records with categories
-- 🏷️ **Categories** — organize spending into custom categories
-- 🎯 **Budgets** — set monthly spending limits per category
-- ⚡ **Redis caching** — analytics queries are cached for speed, with automatic invalidation whenever transactions change
-
-![Dashboard](img/app.jpeg)
+This project takes [SpendWise](https://github.com/JananiUpeksha/Spendwise-Terraform) — an expense tracker built with FastAPI, PostgreSQL, Redis, and React — and re-platforms it onto Kubernetes, packaged as a Helm chart, with production-grade resilience patterns proven out on a local `kind` cluster.
 
 ---
 
-## 🛠️ Tech stack
+## 📐 Architecture
+
+**Before (Docker Compose on EC2):**
+A single EC2 instance running all containers side-by-side, connected via a Compose bridge network, with a standalone Nginx container handling reverse proxy routing.
+
+**After (Kubernetes + Helm):**
+A 3-node `kind` cluster (1 control-plane + 2 workers), with every service running as a proper Kubernetes object — Deployments, a StatefulSet, Services, an Ingress controller — all packaged and deployed as a single Helm chart.
+
+![Architecture](img/k8s-architecture.png)
+
+---
+
+## 🧰 Tech Stack
 
 | Layer | Technology |
 |---|---|
-| **Backend** | FastAPI, SQLAlchemy, Alembic, PostgreSQL, Redis |
-| **Frontend** | React (Vite), React Router, Recharts, Axios |
-| **Containerization** | Docker, Docker Compose, Nginx (reverse proxy) |
-| **Infrastructure** | Terraform, AWS EC2, AWS IAM |
-| **CI/CD** | GitHub Actions |
-| **Monitoring** | Prometheus, Grafana, cAdvisor |
+| Backend | FastAPI, SQLAlchemy, Alembic |
+| Database | PostgreSQL 16 (StatefulSet + PVC) |
+| Cache | Redis 7 |
+| Frontend | React + Vite, served via Nginx |
+| Orchestration | Kubernetes (kind) |
+| Packaging | Helm 3 |
+| Ingress | ingress-nginx |
+| Autoscaling | Horizontal Pod Autoscaler (HPA) + metrics-server |
 
 ---
 
-## 🏗️ Architecture overview
+## ✨ What This Project Demonstrates
 
-- **Nginx** is the single public entry point on the server, routing requests by path:
-  - `/` → React frontend
-  - `/api/` → FastAPI backend
-  - `/grafana/` → Grafana dashboards
-  - `/prometheus/` → Prometheus UI
-- **Frontend** is built into static files and served by its own lightweight Nginx container (multi-stage Docker build)
-- **Backend** connects to PostgreSQL for persistent storage and Redis for caching expensive analytics queries
-- **Monitoring pipeline**: cAdvisor collects per-container resource stats → Prometheus scrapes and stores them on a schedule → Grafana visualizes them as live dashboards
-- Only Nginx is exposed to the internet (`ports`); every other service uses Docker's internal `expose`, unreachable from outside the container network
-- The entire stack runs as Docker containers on a single AWS EC2 instance (`t3.micro`, `ap-south-1`)
-
-![Architecture](img/spendwise_architecture.png)
+- ✅ Migrated a multi-service Docker Compose app to Kubernetes with zero functionality loss
+- ✅ Packaged the entire stack as a **reusable Helm chart** — one command deploys everything
+- ✅ Configured **StatefulSet + PVC** for PostgreSQL to preserve data across pod restarts
+- ✅ Implemented **liveness/readiness probes** for self-healing and safe rollouts
+- ✅ Set up **Ingress routing** replicating the original Nginx reverse-proxy rules
+- ✅ Built a **HorizontalPodAutoscaler** — verified scaling 2→5 replicas under real CPU load
+- ✅ Proved **self-healing**: manually killed a pod, Kubernetes replaced it automatically
+- ✅ Performed a **zero-downtime rolling update** with a live traffic test
+- ✅ Simulated a **broken deployment** and recovered instantly with `helm rollback`
 
 ---
 
-## 🌍 Infrastructure as Code
+## 📁 Repository Structure
 
-All AWS infrastructure — the EC2 instance, security group, SSH key pair, and Elastic IP — is defined as code in [`terraform/`](terraform/) instead of being manually clicked together in the AWS Console.
-
-    cd terraform
-    terraform init
-    terraform plan
-    terraform apply
-
-This means the entire server environment can be destroyed and rebuilt identically in under a minute, from a handful of `.tf` files.
-
----
-
-## 🔄 CI/CD
-
-Every push to `main` triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), which:
-
-1. Connects to the EC2 instance over SSH (using a GitHub Actions secret)
-2. Pulls the latest code (`git pull`)
-3. Rebuilds and restarts the Docker containers (`docker compose up -d --build`)
-
-No manual deployment steps required after merging to `main`.
-
-![GitHub Actions](img/pipeline.jpeg)
+```
+├── backend/                 # FastAPI application
+├── frontend/                # React application
+├── k8s/                     # Raw K8s manifests (Phases 1-6, kept for reference)
+├── spendwise-chart/         # Helm chart (Phase 7 onward — the main deliverable)
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+├── terraform/                # IaC for optional EC2/EKS deployment (from original repo)
+└── img/                       # Screenshots and diagrams for this README
+```
 
 ---
 
-## 📈 Monitoring
+## 🏁 Getting Started
 
-- **cAdvisor** exposes real-time resource metrics (CPU, memory, network) for every running container
-- **Prometheus** scrapes those metrics every 15 seconds and stores them as time-series data
-- **Grafana** queries Prometheus and renders live dashboards — accessible at `/grafana/`
+### Prerequisites
+```bash
+# kubectl, kind, and Helm must be installed
+kubectl version --client
+kind version
+helm version
+```
 
-### Prometheus — scrape target health
-![Prometheus](img/prometheus.jpeg)
+### 1. Create the cluster
+```bash
+kind create cluster --config k8s/kind-config.yaml
+```
 
-### Grafana — live container metrics
-![Grafana Dashboard](img/gafna.jpeg)
+### 2. Build and load the app images
+```bash
+docker build -t spendwise-backend:v2 ./backend
+docker build -t spendwise-frontend:v1 ./frontend
+kind load docker-image spendwise-backend:v2 --name spendwise-cluster
+kind load docker-image spendwise-frontend:v1 --name spendwise-cluster
+```
 
----
+### 3. Install the Ingress controller
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=90s
+```
 
-## 🚀 Running locally
+### 4. Deploy SpendWise with Helm
+```bash
+helm install spendwise spendwise-chart
+```
 
-    git clone https://github.com/JananiUpeksha/Spendwise-Terraform.git
-    cd Spendwise-Terraform
-    docker compose up -d --build
-    docker exec -it spendwise_backend alembic upgrade head
+### 5. Run database migrations
+```bash
+kubectl exec -it -n spendwise deploy/backend -- alembic upgrade head
+```
 
-The app will be available at `http://localhost`.
+### 6. Access the app
+```bash
+kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+```
+Visit **http://localhost:8080**
 
----
-
-## 📁 Project structure
-
-    ├── backend/              # FastAPI application
-    │   ├── app/
-    │   │   ├── routers/       # API endpoints (categories, transactions, budgets, analytics)
-    │   │   ├── models/         # SQLAlchemy models
-    │   │   ├── database.py
-    │   │   └── cache.py         # Redis connection
-    │   └── alembic/            # Database migrations
-    ├── frontend/              # React application
-    │   └── src/
-    │       ├── pages/           # Dashboard, Transactions, Categories, Budgets
-    │       ├── components/       # NavBar
-    │       └── api/               # Axios client
-    ├── terraform/             # Infrastructure as Code (EC2, security group, key pair, EIP)
-    ├── docker-compose.yml      # Multi-container orchestration
-    ├── nginx.conf               # Reverse proxy routing
-    ├── prometheus.yml            # Metrics scrape configuration
-    └── .github/workflows/         # CI/CD pipeline
-
----
-
-## 📝 What this project demonstrates
-
-- ✅ Full-stack development (FastAPI + React)
-- ✅ Database design and migrations
-- ✅ Caching strategy with invalidation
-- ✅ Multi-stage Docker builds
-- ✅ Docker Compose orchestration
-- ✅ Reverse proxy configuration (Nginx)
-- ✅ Cloud infrastructure provisioning (AWS EC2)
-- ✅ Infrastructure as Code (Terraform)
-- ✅ CI/CD automation (GitHub Actions)
-- ✅ Production monitoring (Prometheus + Grafana + cAdvisor)
+![Dashboard running on Kubernetes](img/app.jpeg)
 
 ---
 
-## 📄 License
+## 📊 Autoscaling in Action
 
-MIT
+The backend scales automatically between **2 and 5 replicas** based on CPU utilization (target: 50%).
+
+Generated sustained load with a busybox pod hammering `/health`, then watched `kubectl get hpa -n spendwise -w`:
+
+| CPU | Replicas |
+|---|---|
+| 3% | 2 |
+| 111% | 4 |
+| 173% | 5 |
+
+Once load stopped, replicas scaled back down to the baseline of 2 after the stabilization window passed.
+
+![HPA scaling replicas under load](img/scalling.png)
+
+---
+
+## 🔄 Zero-Downtime Rolling Updates
+
+Bumped the backend image and triggered a rolling update via `helm upgrade`. Kubernetes created new pods, waited for them to pass readiness checks, and **only then** terminated the old pods — old and new ReplicaSets briefly coexisted, with no dropped requests.
+
+```bash
+curl http://localhost:8080/api/health
+# {"status":"ok","version":"v2"}
+```
+
+![Old and new pods during a rolling update](img/rollingupdate.jpeg)
+
+---
+
+## ⏪ Rollback Recovery
+
+Simulated a bad deploy by pointing the backend at a nonexistent image tag. The broken pod failed immediately (`ErrImageNeverPull`) — but because Kubernetes never terminates healthy pods until replacements are ready, **the app kept serving traffic throughout**. Recovered in one command:
+
+```bash
+helm rollback spendwise 3
+```
+
+![Broken pod isolated while healthy pods keep serving, then rollback](img/rollback.jpeg)
+
+---
+
+## 🩺 Self-Healing
+
+Manually deleted a running backend pod. Kubernetes' Deployment controller detected the mismatch between desired (2 replicas) and actual (1) state, and created a replacement automatically within seconds — no manual intervention.
+
+```bash
+kubectl delete pod backend-66c6b96847-jrthc -n spendwise
+# New pod backend-66c6b96847-fh894 created automatically
+```
+
+---
+
+## 🗺️ Helm Chart Overview
+
+```bash
+helm lint spendwise-chart                  # Validate chart structure
+helm template spendwise-chart              # Render manifests locally (dry run)
+helm install spendwise spendwise-chart     # Deploy
+helm upgrade spendwise spendwise-chart     # Apply changes
+helm rollback spendwise <revision>         # Revert to a previous revision
+helm uninstall spendwise                   # Tear down
+```
+
+All configuration (image tags, replica counts, resource limits, HPA thresholds) is centralized in [`values.yaml`](spendwise-chart/values.yaml) — no need to touch template files to reconfigure the deployment.
+
+---
+
+## 🔮 Roadmap
+
+- [ ] Add Prometheus + Grafana + cAdvisor observability stack
+- [ ] Deploy to a managed cluster (EKS) using the existing Terraform config
+- [ ] Add CI pipeline running `helm lint` + `helm template` validation on every PR
+
+---
+
+## 📚 Related Projects
+
+- [SpendWise (Docker Compose + Terraform + EC2)](https://github.com/JananiUpeksha/Spendwise-Terraform) — the original deployment this project migrated from
