@@ -11,7 +11,7 @@ redis:
   image: redis:7-alpine
 
 backend:
-  image: spendwise-backend:v1
+  image: spendwise-backend:v2
   replicas: 2
   port: 8000
   resources:
