@@ -19,4 +19,4 @@ app.include_router(analytics.router)
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "v2"}
